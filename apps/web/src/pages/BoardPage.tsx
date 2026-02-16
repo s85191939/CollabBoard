@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useBoardObjects, type BoardObject } from '../hooks/useBoardObjects';
@@ -22,6 +22,7 @@ export function BoardPage() {
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showAI, setShowAI] = useState(false);
+  const clipboard = useRef<BoardObject[]>([]);
 
   useEffect(() => {
     return () => {
@@ -76,6 +77,26 @@ export function BoardPage() {
     await addObjects(newObjs, user.uid);
   }, [selectedIds, objects, addObjects, user]);
 
+  const handleCopy = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    clipboard.current = objects.filter((o) => selectedIds.includes(o.id));
+  }, [selectedIds, objects]);
+
+  const handlePaste = useCallback(async () => {
+    if (!user || clipboard.current.length === 0) return;
+    const newObjs = clipboard.current.map((obj) => ({
+      ...obj,
+      id: undefined as any,
+      x: obj.x + 30,
+      y: obj.y + 30,
+    }));
+    const added = await addObjects(newObjs, user.uid);
+    if (added) {
+      // Move clipboard reference so next paste offsets further
+      clipboard.current = clipboard.current.map((obj) => ({ ...obj, x: obj.x + 30, y: obj.y + 30 }));
+    }
+  }, [user, addObjects]);
+
   const handleCursorMove = useCallback((x: number, y: number) => {
     if (!user) return;
     updateCursor(x, y, user.displayName || 'Anonymous', userColor, user.photoURL || undefined);
@@ -90,15 +111,25 @@ export function BoardPage() {
       e.preventDefault();
       handleDuplicate();
     }
+    if (e.key === 'c' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleCopy();
+      return;
+    }
+    if (e.key === 'v' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handlePaste();
+      return;
+    }
     if (e.key === 'Escape') {
       setSelectedIds([]);
       setActiveTool('select');
     }
-    if (e.key === 'v') setActiveTool('select');
+    if (e.key === 'v' && !e.metaKey && !e.ctrlKey) setActiveTool('select');
     if (e.key === 'h') setActiveTool('pan');
     if (e.key === 'n') setActiveTool('sticky-note');
     if (e.key === 'r') setActiveTool('rectangle');
-    if (e.key === 'c') setActiveTool('circle');
+    if (e.key === 'c' && !e.metaKey && !e.ctrlKey) setActiveTool('circle');
     if (e.key === 'l') setActiveTool('line');
     if (e.key === 't') setActiveTool('text');
     if (e.key === 'f') setActiveTool('frame');
@@ -106,7 +137,7 @@ export function BoardPage() {
       e.preventDefault();
       setShowAI(true);
     }
-  }, [handleDelete, handleDuplicate]);
+  }, [handleDelete, handleDuplicate, handleCopy, handlePaste]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);

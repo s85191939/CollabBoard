@@ -8,17 +8,15 @@ from pydantic import BaseModel
 from typing import Optional
 import anthropic
 import firebase_admin
-from firebase_admin import credentials, auth as firebase_auth, firestore
+from firebase_admin import auth as firebase_auth
 
 load_dotenv()
 
-# Initialize Firebase Admin
+# Initialize Firebase Admin (for token verification only — no Firestore needed server-side)
 if not firebase_admin._apps:
     firebase_admin.initialize_app(options={
         'projectId': os.getenv('FIREBASE_PROJECT_ID'),
     })
-
-firestore_client = firestore.client()
 
 # Initialize Anthropic client
 claude = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
