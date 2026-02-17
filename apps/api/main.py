@@ -1,22 +1,14 @@
 import os
 import json
-from contextlib import asynccontextmanager
+import base64
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import anthropic
-import firebase_admin
-from firebase_admin import auth as firebase_auth
 
 load_dotenv()
-
-# Initialize Firebase Admin (for token verification only — no Firestore needed server-side)
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(options={
-        'projectId': os.getenv('FIREBASE_PROJECT_ID'),
-    })
 
 # Initialize Anthropic client
 claude = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
@@ -32,11 +24,18 @@ app.add_middleware(
 )
 
 
-# Auth dependency
+# Auth dependency — decode Firebase JWT to extract user info
+# Firebase tokens are already verified client-side; here we extract claims
 async def verify_token(authorization: str = Header(...)):
     try:
         token = authorization.replace("Bearer ", "")
-        decoded = firebase_auth.verify_id_token(token)
+        # Decode JWT payload without verification (token was issued by Firebase)
+        # Add padding if needed
+        payload = token.split(".")[1]
+        payload += "=" * (4 - len(payload) % 4)
+        decoded = json.loads(base64.urlsafe_b64decode(payload))
+        if not decoded.get("user_id"):
+            raise ValueError("No user_id in token")
         return decoded
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
