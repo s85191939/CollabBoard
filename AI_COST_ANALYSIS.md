@@ -4,11 +4,11 @@
 
 | Category | Cost |
 |----------|------|
-| Claude Max subscription (Claude Code + claude.ai) | $100/month (flat rate, not per-token) |
+| Claude Max subscription (Claude Code + claude.ai) | $200/month (flat rate, not per-token) |
 | Anthropic API (testing AI commands) | ~$0.50 (minimal testing) |
 | Firebase (Spark free tier) | $0 |
 | Render (free tier) | $0 |
-| **Total development cost** | **~$100.50** |
+| **Total development cost** | **~$200.50** |
 
 ### Token Usage During Development
 - Claude Code session: Included in Claude Max subscription (not metered per token)
