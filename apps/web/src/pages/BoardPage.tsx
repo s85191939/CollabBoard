@@ -22,6 +22,7 @@ export function BoardPage() {
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showAI, setShowAI] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const clipboard = useRef<BoardObject[]>([]);
 
   useEffect(() => {
@@ -259,6 +260,8 @@ export function BoardPage() {
   const copyBoardId = () => {
     if (boardId) {
       navigator.clipboard.writeText(boardId);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2000);
     }
   };
 
@@ -281,13 +284,14 @@ export function BoardPage() {
           <button
             onClick={copyBoardId}
             style={{
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-              color: '#a0a0b0', cursor: 'pointer', fontSize: '0.7rem', padding: '0.2rem 0.5rem',
-              borderRadius: '0.2rem',
+              background: copiedId ? 'rgba(76,175,80,0.2)' : 'rgba(255,255,255,0.05)',
+              border: copiedId ? '1px solid #4CAF50' : '1px solid rgba(255,255,255,0.1)',
+              color: copiedId ? '#4CAF50' : '#a0a0b0', cursor: 'pointer', fontSize: '0.7rem', padding: '0.2rem 0.5rem',
+              borderRadius: '0.2rem', transition: 'all 0.2s', fontFamily: 'monospace',
             }}
             title="Click to copy board ID"
           >
-            ID: {boardId?.slice(0, 8)}...
+            {copiedId ? 'Copied!' : `ID: ${boardId}`}
           </button>
         </div>
         <PresenceBar users={users} />
