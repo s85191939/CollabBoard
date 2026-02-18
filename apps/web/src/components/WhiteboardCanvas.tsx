@@ -65,6 +65,7 @@ export function WhiteboardCanvas({
   const selectionStart = useRef({ x: 0, y: 0 });
   const isPanning = useRef(false);
   const lastPointerPos = useRef({ x: 0, y: 0 });
+  const spacePressed = useRef(false);
 
   // Handle window resize
   useEffect(() => {
@@ -73,6 +74,28 @@ export function WhiteboardCanvas({
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Spacebar for panning
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        spacePressed.current = true;
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spacePressed.current = false;
+        isPanning.current = false;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, []);
 
   // Update transformer when selection changes
@@ -100,25 +123,34 @@ export function WhiteboardCanvas({
     const stage = stageRef.current;
     if (!stage) return;
 
-    const oldScale = stage.scaleX();
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
+    // Pinch-to-zoom (ctrlKey is set on trackpad pinch) or mouse wheel zoom
+    if (e.evt.ctrlKey || e.evt.metaKey) {
+      const oldScale = stage.scaleX();
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
 
-    const mousePointTo = {
-      x: (pointer.x - stage.x()) / oldScale,
-      y: (pointer.y - stage.y()) / oldScale,
-    };
+      const mousePointTo = {
+        x: (pointer.x - stage.x()) / oldScale,
+        y: (pointer.y - stage.y()) / oldScale,
+      };
 
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
-    const scaleBy = 1.08;
-    let newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
-    newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
+      const scaleBy = 1.03;
+      const direction = e.evt.deltaY > 0 ? -1 : 1;
+      let newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+      newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
 
-    stage.scale({ x: newScale, y: newScale });
-    stage.position({
-      x: pointer.x - mousePointTo.x * newScale,
-      y: pointer.y - mousePointTo.y * newScale,
-    });
+      stage.scale({ x: newScale, y: newScale });
+      stage.position({
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      });
+    } else {
+      // Two-finger trackpad scroll = pan
+      stage.position({
+        x: stage.x() - e.evt.deltaX,
+        y: stage.y() - e.evt.deltaY,
+      });
+    }
     stage.batchDraw();
   }, []);
 
@@ -126,8 +158,8 @@ export function WhiteboardCanvas({
     const stage = stageRef.current;
     if (!stage) return;
 
-    // Middle mouse button or pan tool for panning
-    if (e.evt.button === 1 || activeTool === 'pan' || (e.evt.button === 0 && e.evt.shiftKey && activeTool === 'select')) {
+    // Middle mouse button, pan tool, spacebar+click, or shift+click for panning
+    if (e.evt.button === 1 || activeTool === 'pan' || spacePressed.current || (e.evt.button === 0 && e.evt.shiftKey && activeTool === 'select')) {
       isPanning.current = true;
       lastPointerPos.current = stage.getPointerPosition() || { x: 0, y: 0 };
       return;
@@ -322,6 +354,11 @@ export function WhiteboardCanvas({
           handleTextDblClick(obj.id, obj);
         }
       },
+      onDblTap: () => {
+        if (obj.type === 'sticky-note' || obj.type === 'text' || obj.type === 'frame') {
+          handleTextDblClick(obj.id, obj);
+        }
+      },
     };
 
     switch (obj.type) {
@@ -402,6 +439,22 @@ export function WhiteboardCanvas({
             lineCap="round"
             lineJoin="round"
             hitStrokeWidth={20}
+            onTransformEnd={(e: Konva.KonvaEventObject<Event>) => {
+              const node = e.target;
+              const scaleX = node.scaleX();
+              const scaleY = node.scaleY();
+              node.scaleX(1);
+              node.scaleY(1);
+              const oldPoints = obj.points || [0, 0, obj.width, 0];
+              const newPoints = oldPoints.map((p, i) => i % 2 === 0 ? p * scaleX : p * scaleY);
+              onObjectUpdate(obj.id, {
+                x: node.x(),
+                y: node.y(),
+                points: newPoints,
+                width: Math.abs(newPoints[2] - newPoints[0]) || obj.width * scaleX,
+                rotation: node.rotation(),
+              });
+            }}
           />
         );
 
@@ -475,7 +528,17 @@ export function WhiteboardCanvas({
     }
   };
 
-  const cursorStyle = activeTool === 'pan' ? 'grab' : activeTool === 'select' ? 'default' : 'crosshair';
+  const [cursorOverride, setCursorOverride] = useState(false);
+
+  // Update cursor when space is held
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCursorOverride(spacePressed.current);
+    }, 50);
+    return () => clearInterval(interval);
+  }, []);
+
+  const cursorStyle = cursorOverride || activeTool === 'pan' ? 'grab' : activeTool === 'select' ? 'default' : 'crosshair';
 
   return (
     <div style={{ flex: 1, cursor: cursorStyle, position: 'relative' }}>
