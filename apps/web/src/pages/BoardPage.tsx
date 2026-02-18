@@ -38,7 +38,7 @@ export function BoardPage() {
     const defaults: Record<string, Partial<BoardObject>> = {
       'sticky-note': { width: 200, height: 200, color: '#FFEB3B', text: '', fontSize: 16 },
       'rectangle': { width: 200, height: 150, color: '#2196F3' },
-      'circle': { width: 200, height: 150, color: '#4CAF50' },
+      'circle': { width: 200, height: 200, color: '#4CAF50' },
       'text': { width: 200, height: 200, color: '#ffffff', text: '', fontSize: 20 },
       'line': { width: 200, height: 0, color: '#ffffff', points: [0, 0, 200, 0] },
       'arrow': { width: 200, height: 0, color: '#ffffff', points: [0, 0, 200, 0] },

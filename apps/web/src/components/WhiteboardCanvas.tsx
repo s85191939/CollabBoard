@@ -510,19 +510,34 @@ export function WhiteboardCanvas({
         return (
           <Ellipse
             key={obj.id}
-            {...commonProps}
-            x={obj.x + obj.width / 2}
-            y={obj.y + obj.height / 2}
+            id={`obj-${obj.id}`}
+            x={obj.x}
+            y={obj.y}
             radiusX={obj.width / 2}
             radiusY={obj.height / 2}
+            offsetX={-obj.width / 2}
+            offsetY={-obj.height / 2}
+            rotation={obj.rotation || 0}
+            draggable={draggable}
             fill={obj.color}
             stroke={isSelected ? '#4285f4' : undefined}
             strokeWidth={isSelected ? 2 : 0}
-            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+            onClick={(e: Konva.KonvaEventObject<MouseEvent>) => handleObjectClick(e, obj.id)}
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(e, obj.id)}
+            onTransformEnd={(e: Konva.KonvaEventObject<Event>) => {
               const node = e.target;
+              const scaleX = node.scaleX();
+              const scaleY = node.scaleY();
+              node.scaleX(1);
+              node.scaleY(1);
+              const newWidth = Math.max(20, obj.width * scaleX);
+              const newHeight = Math.max(20, obj.height * scaleY);
               onObjectUpdate(obj.id, {
-                x: node.x() - obj.width / 2,
-                y: node.y() - obj.height / 2,
+                x: node.x(),
+                y: node.y(),
+                width: newWidth,
+                height: newHeight,
+                rotation: node.rotation(),
               });
             }}
           />
@@ -655,6 +670,7 @@ export function WhiteboardCanvas({
           {/* Transformer for shapes (not lines/arrows) */}
           <Transformer
             ref={transformerRef}
+            centeredScaling={true}
             boundBoxFunc={(oldBox, newBox) => {
               if (newBox.width < 20 || newBox.height < 20) return oldBox;
               return newBox;
