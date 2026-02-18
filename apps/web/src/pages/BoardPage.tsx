@@ -10,7 +10,7 @@ import { PresenceBar } from '../components/PresenceBar';
 import { AICommandInput } from '../components/AICommandInput';
 import { PropertiesPanel } from '../components/PropertiesPanel';
 
-export type Tool = 'select' | 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'text' | 'frame' | 'connector' | 'pan';
+export type Tool = 'select' | 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'arrow' | 'text' | 'pan';
 
 export function BoardPage() {
   const { boardId } = useParams<{ boardId: string }>();
@@ -37,10 +37,10 @@ export function BoardPage() {
     const defaults: Record<string, Partial<BoardObject>> = {
       'sticky-note': { width: 200, height: 200, color: '#FFEB3B', text: '', fontSize: 16 },
       'rectangle': { width: 200, height: 150, color: '#2196F3' },
-      'circle': { width: 150, height: 150, color: '#4CAF50' },
-      'text': { width: 200, height: 50, color: '#ffffff', text: 'Text', fontSize: 20 },
-      'frame': { width: 400, height: 300, color: '#37474F', text: 'Frame' },
+      'circle': { width: 200, height: 150, color: '#4CAF50' },
+      'text': { width: 200, height: 200, color: '#ffffff', text: '', fontSize: 20 },
       'line': { width: 200, height: 0, color: '#ffffff', points: [0, 0, 200, 0] },
+      'arrow': { width: 200, height: 0, color: '#ffffff', points: [0, 0, 200, 0] },
     };
 
     const d = defaults[activeTool] || {};
@@ -131,8 +131,8 @@ export function BoardPage() {
     if (e.key === 'r') setActiveTool('rectangle');
     if (e.key === 'c' && !e.metaKey && !e.ctrlKey) setActiveTool('circle');
     if (e.key === 'l') setActiveTool('line');
+    if (e.key === 'a' && !e.metaKey && !e.ctrlKey) setActiveTool('arrow');
     if (e.key === 't') setActiveTool('text');
-    if (e.key === 'f') setActiveTool('frame');
     if (e.key === '/') {
       e.preventDefault();
       setShowAI(true);

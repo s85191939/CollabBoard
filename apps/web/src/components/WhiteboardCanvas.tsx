@@ -1,10 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Stage, Layer, Rect, Circle, Line, Text, Group, Arrow, Transformer } from 'react-konva';
+import { Stage, Layer, Rect, Ellipse, Line, Text, Group, Arrow, Transformer } from 'react-konva';
 import Konva from 'konva';
 
 interface BoardObject {
   id: string;
-  type: 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'text' | 'frame' | 'connector';
+  type: 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'arrow' | 'text' | 'frame' | 'connector';
   x: number;
   y: number;
   width: number;
@@ -29,7 +29,13 @@ interface CursorData {
   color: string;
 }
 
-type Tool = 'select' | 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'text' | 'frame' | 'connector' | 'pan';
+type Tool = 'select' | 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'arrow' | 'text' | 'pan';
+
+const SHAPE_COLORS = [
+  '#ffffff', '#FF5722', '#E91E63', '#9C27B0',
+  '#3F51B5', '#2196F3', '#03A9F4', '#009688',
+  '#4CAF50', '#8BC34A', '#FFEB3B', '#FF9800',
+];
 
 interface Props {
   objects: BoardObject[];
@@ -62,8 +68,7 @@ export function WhiteboardCanvas({
   const selectionRectRef = useRef<Konva.Rect>(null);
   const [stageSize, setStageSize] = useState({ width: window.innerWidth, height: window.innerHeight - 44 });
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
-  const [editingTextValue, setEditingTextValue] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showColorPicker, setShowColorPicker] = useState<{ x: number; y: number; objId: string } | null>(null);
   const isSelecting = useRef(false);
   const selectionStart = useRef({ x: 0, y: 0 });
   const isPanning = useRef(false);
@@ -101,13 +106,14 @@ export function WhiteboardCanvas({
     };
   }, []);
 
-  // Update transformer when selection changes — separate lines from shapes
+  // Update transformers when selection changes — lines/arrows get their own transformer
   useEffect(() => {
     if (!transformerRef.current || !lineTransformerRef.current || !stageRef.current) return;
     const stage = stageRef.current;
 
+    const lineTypes = new Set(['line', 'arrow']);
     const lineIds = new Set(
-      objects.filter((o) => o.type === 'line').map((o) => o.id)
+      objects.filter((o) => lineTypes.has(o.type)).map((o) => o.id)
     );
 
     const shapeNodes: Konva.Node[] = [];
@@ -128,6 +134,13 @@ export function WhiteboardCanvas({
     transformerRef.current.getLayer()?.batchDraw();
   }, [selectedIds, objects]);
 
+  // Close color picker when selection changes
+  useEffect(() => {
+    if (selectedIds.length !== 1) {
+      setShowColorPicker(null);
+    }
+  }, [selectedIds]);
+
   const getPointerPosition = useCallback(() => {
     const stage = stageRef.current;
     if (!stage) return { x: 0, y: 0 };
@@ -142,7 +155,6 @@ export function WhiteboardCanvas({
     const stage = stageRef.current;
     if (!stage) return;
 
-    // Pinch-to-zoom (ctrlKey is set on trackpad pinch) or mouse wheel zoom
     if (e.evt.ctrlKey || e.evt.metaKey) {
       const oldScale = stage.scaleX();
       const pointer = stage.getPointerPosition();
@@ -164,7 +176,6 @@ export function WhiteboardCanvas({
         y: pointer.y - mousePointTo.y * newScale,
       });
     } else {
-      // Two-finger trackpad scroll = pan
       stage.position({
         x: stage.x() - e.evt.deltaX,
         y: stage.y() - e.evt.deltaY,
@@ -177,7 +188,6 @@ export function WhiteboardCanvas({
     const stage = stageRef.current;
     if (!stage) return;
 
-    // Middle mouse button, pan tool, spacebar+click, or shift+click for panning
     if (e.evt.button === 1 || activeTool === 'pan' || spacePressed.current || (e.evt.button === 0 && e.evt.shiftKey && activeTool === 'select')) {
       isPanning.current = true;
       lastPointerPos.current = stage.getPointerPosition() || { x: 0, y: 0 };
@@ -187,19 +197,15 @@ export function WhiteboardCanvas({
     const clickedOnEmpty = e.target === stage || e.target.getParent()?.name() === 'grid';
 
     if (clickedOnEmpty) {
+      setShowColorPicker(null);
       if (activeTool === 'select') {
-        // Start selection rectangle
         onSelectionChange([]);
         isSelecting.current = true;
         const pos = getPointerPosition();
         selectionStart.current = pos;
         if (selectionRectRef.current) {
           selectionRectRef.current.setAttrs({
-            x: pos.x,
-            y: pos.y,
-            width: 0,
-            height: 0,
-            visible: true,
+            x: pos.x, y: pos.y, width: 0, height: 0, visible: true,
           });
         }
       } else {
@@ -213,28 +219,21 @@ export function WhiteboardCanvas({
     const stage = stageRef.current;
     if (!stage) return;
 
-    // Report cursor position for multiplayer
     const pos = getPointerPosition();
     onCursorMove(pos.x, pos.y);
 
-    // Panning
     if (isPanning.current) {
       const pointer = stage.getPointerPosition();
       if (!pointer) return;
       const dx = pointer.x - lastPointerPos.current.x;
       const dy = pointer.y - lastPointerPos.current.y;
-      stage.position({
-        x: stage.x() + dx,
-        y: stage.y() + dy,
-      });
+      stage.position({ x: stage.x() + dx, y: stage.y() + dy });
       lastPointerPos.current = pointer;
       stage.batchDraw();
       return;
     }
 
-    // Selection rectangle
     if (isSelecting.current && selectionRectRef.current) {
-      const pos = getPointerPosition();
       const x = Math.min(selectionStart.current.x, pos.x);
       const y = Math.min(selectionStart.current.y, pos.y);
       const w = Math.abs(pos.x - selectionStart.current.x);
@@ -279,14 +278,32 @@ export function WhiteboardCanvas({
     } else {
       onSelectionChange([objId]);
     }
-  }, [activeTool, selectedIds, onSelectionChange]);
+
+    // Show color picker for shapes (not sticky notes — they have their own panel)
+    const obj = objects.find((o) => o.id === objId);
+    if (obj && ['rectangle', 'circle', 'line', 'arrow'].includes(obj.type)) {
+      const stage = stageRef.current;
+      if (stage) {
+        const stageBox = stage.container().getBoundingClientRect();
+        const node = stage.findOne(`#obj-${objId}`);
+        if (node) {
+          const absPos = node.getAbsolutePosition();
+          setShowColorPicker({
+            x: stageBox.left + absPos.x,
+            y: stageBox.top + absPos.y - 44,
+            objId,
+          });
+        }
+      }
+    } else {
+      setShowColorPicker(null);
+    }
+  }, [activeTool, selectedIds, onSelectionChange, objects]);
 
   const handleDragEnd = useCallback((e: Konva.KonvaEventObject<DragEvent>, objId: string) => {
     const node = e.target;
-    onObjectUpdate(objId, {
-      x: node.x(),
-      y: node.y(),
-    });
+    onObjectUpdate(objId, { x: node.x(), y: node.y() });
+    setShowColorPicker(null);
   }, [onObjectUpdate]);
 
   const handleTransformEnd = useCallback((e: Konva.KonvaEventObject<Event>, objId: string) => {
@@ -304,103 +321,114 @@ export function WhiteboardCanvas({
     });
   }, [onObjectUpdate]);
 
-  const handleTextDblClick = useCallback((objId: string, obj: BoardObject) => {
+  // Line/arrow transform handler — scales points instead of width/height
+  const handleLineTransformEnd = useCallback((e: Konva.KonvaEventObject<Event>, obj: BoardObject) => {
+    const node = e.target;
+    const sx = node.scaleX();
+    const sy = node.scaleY();
+    node.scaleX(1);
+    node.scaleY(1);
+    const oldPoints = obj.points || [0, 0, obj.width, 0];
+    const newPoints = oldPoints.map((p, i) => i % 2 === 0 ? p * sx : p * sy);
+    onObjectUpdate(obj.id, {
+      x: node.x(),
+      y: node.y(),
+      points: newPoints,
+      width: Math.abs(newPoints[2] - newPoints[0]) || obj.width * sx,
+      rotation: node.rotation(),
+    });
+  }, [onObjectUpdate]);
+
+  // Open invisible text editor on sticky note / text
+  const openTextEditor = useCallback((objId: string, obj: BoardObject) => {
+    if (editingTextId) return;
     setEditingTextId(objId);
-    setEditingTextValue(obj.text || '');
-    // Focus the textarea after React renders it
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-        // Place cursor at end
-        textareaRef.current.selectionStart = textareaRef.current.value.length;
-        textareaRef.current.selectionEnd = textareaRef.current.value.length;
-      }
-    }, 0);
-  }, []);
-
-  const handleTextEditBlur = useCallback(() => {
-    if (editingTextId) {
-      onObjectUpdate(editingTextId, { text: editingTextValue });
-      setEditingTextId(null);
-      setEditingTextValue('');
-    }
-  }, [editingTextId, editingTextValue, onObjectUpdate]);
-
-  const handleTextEditKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Escape') {
-      // Cancel editing — revert
-      setEditingTextId(null);
-      setEditingTextValue('');
-    }
-    // Stop propagation so spacebar/other keys don't trigger canvas actions
-    e.stopPropagation();
-  }, []);
-
-  // Compute the textarea overlay position/size for the currently-editing object
-  const getEditingOverlayStyle = useCallback((): React.CSSProperties | null => {
-    if (!editingTextId || !stageRef.current) return null;
-    const editingObj = objects.find((o) => o.id === editingTextId);
-    if (!editingObj) return null;
-
+    setShowColorPicker(null);
     const stage = stageRef.current;
-    const node = stage.findOne(`#obj-${editingTextId}`);
-    if (!node) return null;
+    if (!stage) return;
+    const node = stage.findOne(`#obj-${objId}`);
+    if (!node) return;
 
-    const absPos = node.getAbsolutePosition();
     const scale = stage.scaleX();
-    const container = stage.container().getBoundingClientRect();
+    const stageBox = stage.container().getBoundingClientRect();
+    const absPos = node.getAbsolutePosition();
 
-    const isStickyNote = editingObj.type === 'sticky-note';
-    const isFrame = editingObj.type === 'frame';
+    const textarea = document.createElement('textarea');
+    document.body.appendChild(textarea);
+    textarea.value = obj.text || '';
+    textarea.placeholder = 'Enter text...';
+    textarea.style.position = 'fixed';
+    textarea.style.top = `${stageBox.top + absPos.y}px`;
+    textarea.style.left = `${stageBox.left + absPos.x}px`;
+    textarea.style.width = `${obj.width * scale}px`;
+    textarea.style.height = `${obj.height * scale}px`;
+    textarea.style.fontSize = `${(obj.fontSize || 16) * scale}px`;
+    textarea.style.border = 'none';
+    textarea.style.padding = `${12 * scale}px`;
+    textarea.style.margin = '0';
+    textarea.style.overflow = 'hidden';
+    textarea.style.outline = 'none';
+    textarea.style.resize = 'none';
+    textarea.style.lineHeight = '1.4';
+    textarea.style.fontFamily = 'sans-serif';
+    textarea.style.zIndex = '1000';
+    textarea.style.borderRadius = '4px';
+    textarea.style.boxSizing = 'border-box';
+    textarea.style.whiteSpace = 'pre-wrap';
+    textarea.style.wordWrap = 'break-word';
 
-    return {
-      position: 'absolute' as const,
-      top: `${container.top + absPos.y + (isFrame ? -20 * scale : 0)}px`,
-      left: `${container.left + absPos.x}px`,
-      width: `${editingObj.width * scale}px`,
-      height: `${(isFrame ? 24 : editingObj.height) * scale}px`,
-      fontSize: `${(editingObj.fontSize || (isStickyNote ? 16 : isFrame ? 14 : 20)) * scale}px`,
-      fontFamily: 'sans-serif',
-      fontWeight: isFrame ? 'bold' : 'normal',
-      lineHeight: '1.4',
-      padding: isStickyNote ? `${12 * scale}px` : isFrame ? `${4 * scale}px` : '0px',
-      border: '2px solid #4285f4',
-      borderRadius: '4px',
-      background: isStickyNote ? editingObj.color : isFrame ? 'rgba(55,71,79,0.9)' : 'rgba(30,30,46,0.95)',
-      color: isStickyNote ? '#333' : isFrame ? editingObj.color : '#fff',
-      outline: 'none',
-      resize: 'none' as const,
-      overflow: 'hidden',
-      zIndex: 1000,
-      boxSizing: 'border-box' as const,
-      margin: 0,
-      whiteSpace: 'pre-wrap' as const,
-      wordWrap: 'break-word' as const,
+    if (obj.type === 'sticky-note') {
+      textarea.style.background = obj.color;
+      textarea.style.color = '#333';
+      textarea.style.caretColor = '#333';
+    } else {
+      // Text object — transparent background, white text
+      textarea.style.background = 'transparent';
+      textarea.style.color = obj.color || '#fff';
+      textarea.style.caretColor = obj.color || '#fff';
+    }
+
+    textarea.focus();
+
+    const handleBlur = () => {
+      onObjectUpdate(objId, { text: textarea.value });
+      if (textarea.parentNode) document.body.removeChild(textarea);
+      setEditingTextId(null);
     };
-  }, [editingTextId, objects]);
+
+    textarea.addEventListener('blur', handleBlur);
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') textarea.blur();
+      e.stopPropagation();
+    });
+  }, [onObjectUpdate, editingTextId]);
 
   const renderObject = (obj: BoardObject) => {
     const isSelected = selectedIds.includes(obj.id);
     const draggable = activeTool === 'select';
     const isEditing = editingTextId === obj.id;
+    const isTextable = obj.type === 'sticky-note' || obj.type === 'text';
+
     const commonProps = {
       id: `obj-${obj.id}`,
       x: obj.x,
       y: obj.y,
       rotation: obj.rotation || 0,
       draggable,
-      onClick: (e: Konva.KonvaEventObject<MouseEvent>) => handleObjectClick(e, obj.id),
+      onClick: (e: Konva.KonvaEventObject<MouseEvent>) => {
+        handleObjectClick(e, obj.id);
+        // Single-click on sticky notes / text opens editor
+        if (activeTool === 'select' && isTextable && !isEditing) {
+          openTextEditor(obj.id, obj);
+        }
+      },
       onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(e, obj.id),
       onTransformEnd: (e: Konva.KonvaEventObject<Event>) => handleTransformEnd(e, obj.id),
       onDblClick: () => {
-        if (obj.type === 'sticky-note' || obj.type === 'text' || obj.type === 'frame') {
-          handleTextDblClick(obj.id, obj);
-        }
+        if (isTextable && !isEditing) openTextEditor(obj.id, obj);
       },
       onDblTap: () => {
-        if (obj.type === 'sticky-note' || obj.type === 'text' || obj.type === 'frame') {
-          handleTextDblClick(obj.id, obj);
-        }
+        if (isTextable && !isEditing) openTextEditor(obj.id, obj);
       },
     };
 
@@ -435,6 +463,35 @@ export function WhiteboardCanvas({
           </Group>
         );
 
+      case 'text':
+        return (
+          <Group key={obj.id} {...commonProps}>
+            <Rect
+              width={obj.width}
+              height={obj.height}
+              fill="transparent"
+              stroke={isSelected ? 'rgba(66,133,244,0.3)' : undefined}
+              strokeWidth={isSelected ? 1 : 0}
+              dash={isSelected ? [4, 4] : undefined}
+            />
+            {!isEditing && (
+              <Text
+                text={obj.text || 'Enter text...'}
+                width={obj.width}
+                height={obj.height}
+                padding={12}
+                fontSize={obj.fontSize || 20}
+                fontFamily="sans-serif"
+                fill={obj.text ? (obj.color || '#fff') : '#666'}
+                fontStyle={obj.text ? 'normal' : 'italic'}
+                wrap="word"
+                align="left"
+                verticalAlign="top"
+              />
+            )}
+          </Group>
+        );
+
       case 'rectangle':
         return (
           <Rect
@@ -451,7 +508,7 @@ export function WhiteboardCanvas({
 
       case 'circle':
         return (
-          <Circle
+          <Ellipse
             key={obj.id}
             {...commonProps}
             x={obj.x + obj.width / 2}
@@ -461,7 +518,6 @@ export function WhiteboardCanvas({
             fill={obj.color}
             stroke={isSelected ? '#4285f4' : undefined}
             strokeWidth={isSelected ? 2 : 0}
-            // Override position for circle since center-based
             onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
               const node = e.target;
               onObjectUpdate(obj.id, {
@@ -476,47 +532,48 @@ export function WhiteboardCanvas({
         return (
           <Line
             key={obj.id}
-            {...commonProps}
+            id={`obj-${obj.id}`}
+            x={obj.x}
+            y={obj.y}
+            rotation={obj.rotation || 0}
+            draggable={draggable}
             points={obj.points || [0, 0, obj.width, 0]}
             stroke={obj.color}
             strokeWidth={3}
             lineCap="round"
             lineJoin="round"
             hitStrokeWidth={20}
-            onTransformEnd={(e: Konva.KonvaEventObject<Event>) => {
-              const node = e.target;
-              const scaleX = node.scaleX();
-              const scaleY = node.scaleY();
-              node.scaleX(1);
-              node.scaleY(1);
-              const oldPoints = obj.points || [0, 0, obj.width, 0];
-              const newPoints = oldPoints.map((p, i) => i % 2 === 0 ? p * scaleX : p * scaleY);
-              onObjectUpdate(obj.id, {
-                x: node.x(),
-                y: node.y(),
-                points: newPoints,
-                width: Math.abs(newPoints[2] - newPoints[0]) || obj.width * scaleX,
-                rotation: node.rotation(),
-              });
-            }}
+            onClick={(e: Konva.KonvaEventObject<MouseEvent>) => handleObjectClick(e, obj.id)}
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(e, obj.id)}
+            onTransformEnd={(e: Konva.KonvaEventObject<Event>) => handleLineTransformEnd(e, obj)}
           />
         );
 
-      case 'text':
+      case 'arrow':
         return (
-          <Group key={obj.id} {...commonProps}>
-            {!isEditing && (
-              <Text
-                text={obj.text || 'Text'}
-                fontSize={obj.fontSize || 20}
-                fontFamily="sans-serif"
-                fill={obj.color}
-                width={obj.width}
-              />
-            )}
-          </Group>
+          <Arrow
+            key={obj.id}
+            id={`obj-${obj.id}`}
+            x={obj.x}
+            y={obj.y}
+            rotation={obj.rotation || 0}
+            draggable={draggable}
+            points={obj.points || [0, 0, obj.width, 0]}
+            stroke={obj.color}
+            fill={obj.color}
+            strokeWidth={3}
+            pointerLength={12}
+            pointerWidth={10}
+            lineCap="round"
+            lineJoin="round"
+            hitStrokeWidth={20}
+            onClick={(e: Konva.KonvaEventObject<MouseEvent>) => handleObjectClick(e, obj.id)}
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(e, obj.id)}
+            onTransformEnd={(e: Konva.KonvaEventObject<Event>) => handleLineTransformEnd(e, obj)}
+          />
         );
 
+      // Legacy types — render minimally so old data doesn't crash
       case 'frame':
         return (
           <Group key={obj.id} {...commonProps}>
@@ -529,34 +586,18 @@ export function WhiteboardCanvas({
               cornerRadius={8}
               dash={[8, 4]}
             />
-            {!isEditing && (
-              <Text
-                text={obj.text || 'Frame'}
-                fontSize={14}
-                fontFamily="sans-serif"
-                fill={obj.color}
-                x={8}
-                y={-20}
-                fontStyle="bold"
-              />
-            )}
           </Group>
         );
 
-      case 'connector':
-        // Find connected objects
+      case 'connector': {
         const fromObj = objects.find((o) => o.id === obj.fromId);
         const toObj = objects.find((o) => o.id === obj.toId);
         if (!fromObj || !toObj) return null;
-        const fromX = fromObj.x + fromObj.width / 2;
-        const fromY = fromObj.y + fromObj.height / 2;
-        const toX = toObj.x + toObj.width / 2;
-        const toY = toObj.y + toObj.height / 2;
         return (
           <Arrow
             key={obj.id}
             id={`obj-${obj.id}`}
-            points={[fromX, fromY, toX, toY]}
+            points={[fromObj.x + fromObj.width / 2, fromObj.y + fromObj.height / 2, toObj.x + toObj.width / 2, toObj.y + toObj.height / 2]}
             stroke={obj.color || '#fff'}
             strokeWidth={2}
             pointerLength={10}
@@ -566,6 +607,7 @@ export function WhiteboardCanvas({
             hitStrokeWidth={20}
           />
         );
+      }
 
       default:
         return null;
@@ -574,7 +616,6 @@ export function WhiteboardCanvas({
 
   const [cursorOverride, setCursorOverride] = useState(false);
 
-  // Update cursor when space is held
   useEffect(() => {
     const interval = setInterval(() => {
       setCursorOverride(spacePressed.current);
@@ -596,22 +637,13 @@ export function WhiteboardCanvas({
         onMouseUp={handleMouseUp}
         onContextMenu={(e) => e.evt.preventDefault()}
       >
-        {/* Grid layer */}
-        <Layer name="grid">
-          {/* Subtle dot grid pattern rendered by canvas directly is more performant,
-              but for now we keep it simple */}
-        </Layer>
+        <Layer name="grid" />
 
-        {/* Objects layer */}
         <Layer>
-          {/* Render frames first (behind other objects) */}
           {objects.filter((o) => o.type === 'frame').map(renderObject)}
-          {/* Then connectors */}
           {objects.filter((o) => o.type === 'connector').map(renderObject)}
-          {/* Then other objects */}
           {objects.filter((o) => o.type !== 'frame' && o.type !== 'connector').map(renderObject)}
 
-          {/* Selection rectangle */}
           <Rect
             ref={selectionRectRef}
             fill="rgba(66, 133, 244, 0.1)"
@@ -620,7 +652,7 @@ export function WhiteboardCanvas({
             visible={false}
           />
 
-          {/* Transformer for shapes (not lines) */}
+          {/* Transformer for shapes (not lines/arrows) */}
           <Transformer
             ref={transformerRef}
             boundBoxFunc={(oldBox, newBox) => {
@@ -633,17 +665,18 @@ export function WhiteboardCanvas({
             anchorSize={8}
           />
 
-          {/* Transformer for lines — only 2 endpoint anchors */}
+          {/* Transformer for lines/arrows — just 2 endpoint dots */}
           <Transformer
             ref={lineTransformerRef}
             enabledAnchors={['top-left', 'bottom-right']}
             borderEnabled={false}
             rotateEnabled={false}
-            borderStroke="#4285f4"
             anchorFill="#fff"
             anchorStroke="#4285f4"
             anchorSize={10}
             anchorCornerRadius={5}
+            anchorStrokeWidth={2}
+            keepRatio={false}
           />
         </Layer>
 
@@ -651,7 +684,6 @@ export function WhiteboardCanvas({
         <Layer>
           {cursors.map((cursor) => (
             <Group key={cursor.userId} x={cursor.x} y={cursor.y}>
-              {/* Cursor arrow */}
               <Line
                 points={[0, 0, 0, 16, 4, 12, 8, 20, 12, 18, 8, 10, 14, 10]}
                 fill={cursor.color}
@@ -659,7 +691,6 @@ export function WhiteboardCanvas({
                 strokeWidth={1}
                 closed
               />
-              {/* Name label */}
               <Group x={16} y={14}>
                 <Rect
                   width={Math.max(60, cursor.displayName.length * 7 + 12)}
@@ -681,22 +712,47 @@ export function WhiteboardCanvas({
         </Layer>
       </Stage>
 
-      {/* Inline text editing overlay */}
-      {editingTextId && (() => {
-        const style = getEditingOverlayStyle();
-        if (!style) return null;
-        return (
-          <textarea
-            ref={textareaRef}
-            value={editingTextValue}
-            onChange={(e) => setEditingTextValue(e.target.value)}
-            onBlur={handleTextEditBlur}
-            onKeyDown={handleTextEditKeyDown}
-            placeholder="Enter text..."
-            style={style}
-          />
-        );
-      })()}
+      {/* Floating color picker — appears above shape when selected */}
+      {showColorPicker && (
+        <div
+          style={{
+            position: 'fixed',
+            top: showColorPicker.y,
+            left: showColorPicker.x,
+            display: 'flex',
+            gap: '3px',
+            padding: '6px 8px',
+            background: '#1e1e2e',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            zIndex: 1000,
+          }}
+        >
+          {SHAPE_COLORS.map((c) => {
+            const currentObj = objects.find((o) => o.id === showColorPicker.objId);
+            const isActive = currentObj?.color === c;
+            return (
+              <button
+                key={c}
+                onClick={() => {
+                  onObjectUpdate(showColorPicker.objId, { color: c });
+                }}
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: c,
+                  border: isActive ? '2px solid #4285f4' : '2px solid rgba(255,255,255,0.2)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  outline: 'none',
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {/* Zoom indicator */}
       <div style={{
@@ -704,6 +760,7 @@ export function WhiteboardCanvas({
         background: 'rgba(22,22,30,0.8)', color: '#a0a0b0',
         padding: '0.3rem 0.6rem', borderRadius: '0.3rem', fontSize: '0.75rem',
         border: '1px solid rgba(255,255,255,0.1)',
+        pointerEvents: 'none',
       }}>
         {Math.round((stageRef.current?.scaleX() || 1) * 100)}%
       </div>

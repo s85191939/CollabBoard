@@ -1,4 +1,4 @@
-type Tool = 'select' | 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'text' | 'frame' | 'connector' | 'pan';
+type Tool = 'select' | 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'arrow' | 'text' | 'pan';
 
 interface Props {
   activeTool: Tool;
@@ -12,8 +12,8 @@ const tools: { id: Tool; label: string; icon: string; shortcut: string }[] = [
   { id: 'rectangle', label: 'Rectangle', icon: '⬜', shortcut: 'R' },
   { id: 'circle', label: 'Circle', icon: '⭕', shortcut: 'C' },
   { id: 'line', label: 'Line', icon: '╱', shortcut: 'L' },
+  { id: 'arrow', label: 'Arrow', icon: '→', shortcut: 'A' },
   { id: 'text', label: 'Text', icon: 'T', shortcut: 'T' },
-  { id: 'frame', label: 'Frame', icon: '⬡', shortcut: 'F' },
 ];
 
 export function Toolbar({ activeTool, onToolChange }: Props) {

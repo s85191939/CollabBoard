@@ -1,6 +1,6 @@
 interface BoardObject {
   id: string;
-  type: 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'text' | 'frame' | 'connector';
+  type: 'sticky-note' | 'rectangle' | 'circle' | 'line' | 'arrow' | 'text' | 'frame' | 'connector';
   x: number;
   y: number;
   width: number;
