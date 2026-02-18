@@ -58,9 +58,12 @@ export function WhiteboardCanvas({
 }: Props) {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
+  const lineTransformerRef = useRef<Konva.Transformer>(null);
   const selectionRectRef = useRef<Konva.Rect>(null);
   const [stageSize, setStageSize] = useState({ width: window.innerWidth, height: window.innerHeight - 44 });
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingTextValue, setEditingTextValue] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isSelecting = useRef(false);
   const selectionStart = useRef({ x: 0, y: 0 });
   const isPanning = useRef(false);
@@ -98,14 +101,30 @@ export function WhiteboardCanvas({
     };
   }, []);
 
-  // Update transformer when selection changes
+  // Update transformer when selection changes — separate lines from shapes
   useEffect(() => {
-    if (!transformerRef.current || !stageRef.current) return;
+    if (!transformerRef.current || !lineTransformerRef.current || !stageRef.current) return;
     const stage = stageRef.current;
-    const selectedNodes = selectedIds
-      .map((id) => stage.findOne(`#obj-${id}`))
-      .filter(Boolean) as Konva.Node[];
-    transformerRef.current.nodes(selectedNodes);
+
+    const lineIds = new Set(
+      objects.filter((o) => o.type === 'line').map((o) => o.id)
+    );
+
+    const shapeNodes: Konva.Node[] = [];
+    const lineNodes: Konva.Node[] = [];
+
+    selectedIds.forEach((id) => {
+      const node = stage.findOne(`#obj-${id}`);
+      if (!node) return;
+      if (lineIds.has(id)) {
+        lineNodes.push(node);
+      } else {
+        shapeNodes.push(node);
+      }
+    });
+
+    transformerRef.current.nodes(shapeNodes);
+    lineTransformerRef.current.nodes(lineNodes);
     transformerRef.current.getLayer()?.batchDraw();
   }, [selectedIds, objects]);
 
@@ -287,54 +306,78 @@ export function WhiteboardCanvas({
 
   const handleTextDblClick = useCallback((objId: string, obj: BoardObject) => {
     setEditingTextId(objId);
-    const stage = stageRef.current;
-    if (!stage) return;
-    const node = stage.findOne(`#obj-${objId}`);
-    if (!node) return;
-
-    const textPosition = node.getAbsolutePosition();
-    const stageContainer = stage.container();
-    const areaPosition = {
-      x: stageContainer.offsetLeft + textPosition.x,
-      y: stageContainer.offsetTop + textPosition.y,
-    };
-
-    const textarea = document.createElement('textarea');
-    document.body.appendChild(textarea);
-    textarea.value = obj.text || '';
-    textarea.style.position = 'absolute';
-    textarea.style.top = `${areaPosition.y}px`;
-    textarea.style.left = `${areaPosition.x}px`;
-    textarea.style.width = `${node.width() * stage.scaleX()}px`;
-    textarea.style.height = `${node.height() * stage.scaleY()}px`;
-    textarea.style.fontSize = `${(obj.fontSize || 16) * stage.scaleX()}px`;
-    textarea.style.border = '2px solid #4285f4';
-    textarea.style.padding = '8px';
-    textarea.style.margin = '0';
-    textarea.style.overflow = 'hidden';
-    textarea.style.background = obj.type === 'sticky-note' ? obj.color : 'rgba(30,30,46,0.95)';
-    textarea.style.color = obj.type === 'sticky-note' ? '#333' : '#fff';
-    textarea.style.outline = 'none';
-    textarea.style.resize = 'none';
-    textarea.style.lineHeight = '1.4';
-    textarea.style.fontFamily = 'sans-serif';
-    textarea.style.zIndex = '1000';
-    textarea.style.borderRadius = '4px';
-    textarea.focus();
-
-    const handleBlur = () => {
-      onObjectUpdate(objId, { text: textarea.value });
-      document.body.removeChild(textarea);
-      setEditingTextId(null);
-    };
-
-    textarea.addEventListener('blur', handleBlur);
-    textarea.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        textarea.blur();
+    setEditingTextValue(obj.text || '');
+    // Focus the textarea after React renders it
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        // Place cursor at end
+        textareaRef.current.selectionStart = textareaRef.current.value.length;
+        textareaRef.current.selectionEnd = textareaRef.current.value.length;
       }
-    });
-  }, [onObjectUpdate]);
+    }, 0);
+  }, []);
+
+  const handleTextEditBlur = useCallback(() => {
+    if (editingTextId) {
+      onObjectUpdate(editingTextId, { text: editingTextValue });
+      setEditingTextId(null);
+      setEditingTextValue('');
+    }
+  }, [editingTextId, editingTextValue, onObjectUpdate]);
+
+  const handleTextEditKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      // Cancel editing — revert
+      setEditingTextId(null);
+      setEditingTextValue('');
+    }
+    // Stop propagation so spacebar/other keys don't trigger canvas actions
+    e.stopPropagation();
+  }, []);
+
+  // Compute the textarea overlay position/size for the currently-editing object
+  const getEditingOverlayStyle = useCallback((): React.CSSProperties | null => {
+    if (!editingTextId || !stageRef.current) return null;
+    const editingObj = objects.find((o) => o.id === editingTextId);
+    if (!editingObj) return null;
+
+    const stage = stageRef.current;
+    const node = stage.findOne(`#obj-${editingTextId}`);
+    if (!node) return null;
+
+    const absPos = node.getAbsolutePosition();
+    const scale = stage.scaleX();
+    const container = stage.container().getBoundingClientRect();
+
+    const isStickyNote = editingObj.type === 'sticky-note';
+    const isFrame = editingObj.type === 'frame';
+
+    return {
+      position: 'absolute' as const,
+      top: `${container.top + absPos.y + (isFrame ? -20 * scale : 0)}px`,
+      left: `${container.left + absPos.x}px`,
+      width: `${editingObj.width * scale}px`,
+      height: `${(isFrame ? 24 : editingObj.height) * scale}px`,
+      fontSize: `${(editingObj.fontSize || (isStickyNote ? 16 : isFrame ? 14 : 20)) * scale}px`,
+      fontFamily: 'sans-serif',
+      fontWeight: isFrame ? 'bold' : 'normal',
+      lineHeight: '1.4',
+      padding: isStickyNote ? `${12 * scale}px` : isFrame ? `${4 * scale}px` : '0px',
+      border: '2px solid #4285f4',
+      borderRadius: '4px',
+      background: isStickyNote ? editingObj.color : isFrame ? 'rgba(55,71,79,0.9)' : 'rgba(30,30,46,0.95)',
+      color: isStickyNote ? '#333' : isFrame ? editingObj.color : '#fff',
+      outline: 'none',
+      resize: 'none' as const,
+      overflow: 'hidden',
+      zIndex: 1000,
+      boxSizing: 'border-box' as const,
+      margin: 0,
+      whiteSpace: 'pre-wrap' as const,
+      wordWrap: 'break-word' as const,
+    };
+  }, [editingTextId, objects]);
 
   const renderObject = (obj: BoardObject) => {
     const isSelected = selectedIds.includes(obj.id);
@@ -376,13 +419,14 @@ export function WhiteboardCanvas({
             />
             {!isEditing && (
               <Text
-                text={obj.text || ''}
+                text={obj.text || 'Enter text...'}
                 width={obj.width}
                 height={obj.height}
                 padding={12}
                 fontSize={obj.fontSize || 16}
                 fontFamily="sans-serif"
-                fill="#333"
+                fill={obj.text ? '#333' : '#999'}
+                fontStyle={obj.text ? 'normal' : 'italic'}
                 wrap="word"
                 align="left"
                 verticalAlign="top"
@@ -576,7 +620,7 @@ export function WhiteboardCanvas({
             visible={false}
           />
 
-          {/* Transformer */}
+          {/* Transformer for shapes (not lines) */}
           <Transformer
             ref={transformerRef}
             boundBoxFunc={(oldBox, newBox) => {
@@ -587,6 +631,19 @@ export function WhiteboardCanvas({
             anchorFill="#fff"
             anchorStroke="#4285f4"
             anchorSize={8}
+          />
+
+          {/* Transformer for lines — only 2 endpoint anchors */}
+          <Transformer
+            ref={lineTransformerRef}
+            enabledAnchors={['top-left', 'bottom-right']}
+            borderEnabled={false}
+            rotateEnabled={false}
+            borderStroke="#4285f4"
+            anchorFill="#fff"
+            anchorStroke="#4285f4"
+            anchorSize={10}
+            anchorCornerRadius={5}
           />
         </Layer>
 
@@ -623,6 +680,23 @@ export function WhiteboardCanvas({
           ))}
         </Layer>
       </Stage>
+
+      {/* Inline text editing overlay */}
+      {editingTextId && (() => {
+        const style = getEditingOverlayStyle();
+        if (!style) return null;
+        return (
+          <textarea
+            ref={textareaRef}
+            value={editingTextValue}
+            onChange={(e) => setEditingTextValue(e.target.value)}
+            onBlur={handleTextEditBlur}
+            onKeyDown={handleTextEditKeyDown}
+            placeholder="Enter text..."
+            style={style}
+          />
+        );
+      })()}
 
       {/* Zoom indicator */}
       <div style={{
