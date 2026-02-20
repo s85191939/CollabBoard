@@ -287,13 +287,17 @@ export function WhiteboardCanvas({
     if (obj && ['rectangle', 'circle', 'line', 'arrow'].includes(obj.type)) {
       const stage = stageRef.current;
       if (stage) {
-        const stageBox = stage.container().getBoundingClientRect();
         const node = stage.findOne(`#obj-${objId}`);
         if (node) {
-          const absPos = node.getAbsolutePosition();
+          const clientRect = node.getClientRect();
+          const stageBox = stage.container().getBoundingClientRect();
+          // Position toolbar above-right of the object, well clear of it
+          const toolbarHeight = (obj.type === 'line' || obj.type === 'arrow') ? 80 : 44;
+          const topY = stageBox.top + clientRect.y - toolbarHeight - 12;
+          const leftX = stageBox.left + clientRect.x + clientRect.width / 2;
           setShowColorPicker({
-            x: stageBox.left + absPos.x,
-            y: stageBox.top + absPos.y - 44,
+            x: Math.max(8, Math.min(leftX, window.innerWidth - 320)),
+            y: Math.max(8, topY),
             objId,
           });
         }
@@ -303,11 +307,35 @@ export function WhiteboardCanvas({
     }
   }, [activeTool, selectedIds, onSelectionChange, objects]);
 
+  // Reposition the floating toolbar to track the object after drag/transform
+  const repositionColorPicker = useCallback((objId: string) => {
+    const obj = objects.find((o) => o.id === objId);
+    if (!obj || !['rectangle', 'circle', 'line', 'arrow'].includes(obj.type)) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const node = stage.findOne(`#obj-${objId}`);
+    if (!node) return;
+    const clientRect = node.getClientRect();
+    const stageBox = stage.container().getBoundingClientRect();
+    const toolbarHeight = (obj.type === 'line' || obj.type === 'arrow') ? 80 : 44;
+    const topY = stageBox.top + clientRect.y - toolbarHeight - 12;
+    const leftX = stageBox.left + clientRect.x + clientRect.width / 2;
+    setShowColorPicker({
+      x: Math.max(8, Math.min(leftX, window.innerWidth - 320)),
+      y: Math.max(8, topY),
+      objId,
+    });
+  }, [objects]);
+
   const handleDragEnd = useCallback((e: Konva.KonvaEventObject<DragEvent>, objId: string) => {
     const node = e.target;
     onObjectUpdate(objId, { x: node.x(), y: node.y() });
-    setShowColorPicker(null);
-  }, [onObjectUpdate]);
+    // Reposition toolbar instead of dismissing it
+    if (showColorPicker?.objId === objId) {
+      // Use requestAnimationFrame so the node position updates first
+      requestAnimationFrame(() => repositionColorPicker(objId));
+    }
+  }, [onObjectUpdate, showColorPicker, repositionColorPicker]);
 
   const handleTransformEnd = useCallback((e: Konva.KonvaEventObject<Event>, objId: string) => {
     const node = e.target;
@@ -322,7 +350,10 @@ export function WhiteboardCanvas({
       height: Math.max(20, node.height() * scaleY),
       rotation: node.rotation(),
     });
-  }, [onObjectUpdate]);
+    if (showColorPicker?.objId === objId) {
+      requestAnimationFrame(() => repositionColorPicker(objId));
+    }
+  }, [onObjectUpdate, showColorPicker, repositionColorPicker]);
 
   // Line/arrow transform handler — scales points instead of width/height
   const handleLineTransformEnd = useCallback((e: Konva.KonvaEventObject<Event>, obj: BoardObject) => {
@@ -340,7 +371,10 @@ export function WhiteboardCanvas({
       width: Math.abs(newPoints[2] - newPoints[0]) || obj.width * sx,
       rotation: node.rotation(),
     });
-  }, [onObjectUpdate]);
+    if (showColorPicker?.objId === obj.id) {
+      requestAnimationFrame(() => repositionColorPicker(obj.id));
+    }
+  }, [onObjectUpdate, showColorPicker, repositionColorPicker]);
 
   // Open invisible text editor on sticky note / text
   const openTextEditor = useCallback((objId: string, obj: BoardObject) => {
@@ -757,6 +791,33 @@ export function WhiteboardCanvas({
               zIndex: 1000,
             }}
           >
+            {/* Close button */}
+            <button
+              onClick={() => setShowColorPicker(null)}
+              style={{
+                position: 'absolute',
+                top: -8,
+                right: -8,
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                background: '#333',
+                border: '1px solid rgba(255,255,255,0.3)',
+                color: '#ccc',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '12px',
+                lineHeight: 1,
+                padding: 0,
+                zIndex: 1001,
+              }}
+              title="Close"
+            >
+              ✕
+            </button>
+
             {/* Color row */}
             <div style={{ display: 'flex', gap: '3px' }}>
               {SHAPE_COLORS.map((c) => {
