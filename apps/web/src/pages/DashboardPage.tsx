@@ -68,6 +68,7 @@ export function DashboardPage() {
   };
 
   const canCreate = newBoardTitle.trim().length > 0;
+  const [showTooltip, setShowTooltip] = useState(false);
 
   return (
     <div style={{ minHeight: '100vh', background: '#1a1a2e', color: '#fff' }}>
@@ -107,20 +108,45 @@ export function DashboardPage() {
               color: '#fff', fontSize: '1rem',
             }}
           />
-          <button
-            onClick={createBoard}
-            disabled={!canCreate}
-            style={{
-              padding: '0.7rem 1.5rem',
-              background: canCreate ? '#4285f4' : 'rgba(66,133,244,0.3)',
-              color: canCreate ? '#fff' : 'rgba(255,255,255,0.4)',
-              border: 'none', borderRadius: '0.4rem',
-              cursor: canCreate ? 'pointer' : 'not-allowed',
-              fontSize: '1rem', transition: 'all 0.2s',
-            }}
+          <div
+            style={{ position: 'relative', display: 'inline-block', cursor: canCreate ? 'pointer' : 'not-allowed' }}
+            onMouseEnter={() => !canCreate && setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+            onClick={() => canCreate && createBoard()}
           >
-            + New Board
-          </button>
+            <button
+              disabled={!canCreate}
+              style={{
+                padding: '0.7rem 1.5rem',
+                background: canCreate ? '#4285f4' : 'rgba(66,133,244,0.3)',
+                color: canCreate ? '#fff' : 'rgba(255,255,255,0.4)',
+                border: 'none', borderRadius: '0.4rem',
+                cursor: 'inherit',
+                fontSize: '1rem', transition: 'all 0.2s',
+                pointerEvents: 'none',
+              }}
+            >
+              + New Board
+            </button>
+            {showTooltip && !canCreate && (
+              <div style={{
+                position: 'absolute',
+                bottom: '110%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: '#333',
+                color: '#fff',
+                padding: '0.4rem 0.8rem',
+                borderRadius: '0.3rem',
+                fontSize: '0.8rem',
+                whiteSpace: 'nowrap',
+                zIndex: 10,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+              }}>
+                Input title to create new board
+              </div>
+            )}
+          </div>
           <button
             onClick={joinBoard}
             style={{
