@@ -19,7 +19,10 @@ interface BoardObject {
   fromId?: string;
   toId?: string;
   points?: number[];
+  strokeWidth?: number;
 }
+
+const STROKE_WIDTHS = [1, 2, 3, 5, 8, 12];
 
 interface CursorData {
   userId: string;
@@ -543,7 +546,8 @@ export function WhiteboardCanvas({
           />
         );
 
-      case 'line':
+      case 'line': {
+        const lineStroke = obj.strokeWidth || 3;
         return (
           <Line
             key={obj.id}
@@ -554,17 +558,19 @@ export function WhiteboardCanvas({
             draggable={draggable}
             points={obj.points || [0, 0, obj.width, 0]}
             stroke={obj.color}
-            strokeWidth={3}
+            strokeWidth={lineStroke}
             lineCap="round"
             lineJoin="round"
-            hitStrokeWidth={20}
+            hitStrokeWidth={Math.max(20, lineStroke + 10)}
             onClick={(e: Konva.KonvaEventObject<MouseEvent>) => handleObjectClick(e, obj.id)}
             onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(e, obj.id)}
             onTransformEnd={(e: Konva.KonvaEventObject<Event>) => handleLineTransformEnd(e, obj)}
           />
         );
+      }
 
-      case 'arrow':
+      case 'arrow': {
+        const arrowStroke = obj.strokeWidth || 3;
         return (
           <Arrow
             key={obj.id}
@@ -576,17 +582,18 @@ export function WhiteboardCanvas({
             points={obj.points || [0, 0, obj.width, 0]}
             stroke={obj.color}
             fill={obj.color}
-            strokeWidth={3}
-            pointerLength={12}
-            pointerWidth={10}
+            strokeWidth={arrowStroke}
+            pointerLength={Math.max(12, arrowStroke * 3)}
+            pointerWidth={Math.max(10, arrowStroke * 2.5)}
             lineCap="round"
             lineJoin="round"
-            hitStrokeWidth={20}
+            hitStrokeWidth={Math.max(20, arrowStroke + 10)}
             onClick={(e: Konva.KonvaEventObject<MouseEvent>) => handleObjectClick(e, obj.id)}
             onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(e, obj.id)}
             onTransformEnd={(e: Konva.KonvaEventObject<Event>) => handleLineTransformEnd(e, obj)}
           />
         );
+      }
 
       // Legacy types — render minimally so old data doesn't crash
       case 'frame':
@@ -681,12 +688,13 @@ export function WhiteboardCanvas({
             anchorSize={8}
           />
 
-          {/* Transformer for lines/arrows — just 2 endpoint dots */}
+          {/* Transformer for lines/arrows — 2 endpoint dots + rotation */}
           <Transformer
             ref={lineTransformerRef}
             enabledAnchors={['top-left', 'bottom-right']}
             borderEnabled={false}
-            rotateEnabled={false}
+            rotateEnabled={true}
+            rotateAnchorOffset={20}
             anchorFill="#fff"
             anchorStroke="#4285f4"
             anchorSize={10}
@@ -728,47 +736,96 @@ export function WhiteboardCanvas({
         </Layer>
       </Stage>
 
-      {/* Floating color picker — appears above shape when selected */}
-      {showColorPicker && (
-        <div
-          style={{
-            position: 'fixed',
-            top: showColorPicker.y,
-            left: showColorPicker.x,
-            display: 'flex',
-            gap: '3px',
-            padding: '6px 8px',
-            background: '#1e1e2e',
-            borderRadius: '8px',
-            border: '1px solid rgba(255,255,255,0.15)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-            zIndex: 1000,
-          }}
-        >
-          {SHAPE_COLORS.map((c) => {
-            const currentObj = objects.find((o) => o.id === showColorPicker.objId);
-            const isActive = currentObj?.color === c;
-            return (
-              <button
-                key={c}
-                onClick={() => {
-                  onObjectUpdate(showColorPicker.objId, { color: c });
-                }}
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: '50%',
-                  background: c,
-                  border: isActive ? '2px solid #4285f4' : '2px solid rgba(255,255,255,0.2)',
-                  cursor: 'pointer',
-                  padding: 0,
-                  outline: 'none',
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
+      {/* Floating toolbar — color picker + thickness for lines/arrows */}
+      {showColorPicker && (() => {
+        const currentObj = objects.find((o) => o.id === showColorPicker.objId);
+        const isLineType = currentObj && (currentObj.type === 'line' || currentObj.type === 'arrow');
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: showColorPicker.y,
+              left: showColorPicker.x,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              padding: '8px 10px',
+              background: '#1e1e2e',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.15)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+              zIndex: 1000,
+            }}
+          >
+            {/* Color row */}
+            <div style={{ display: 'flex', gap: '3px' }}>
+              {SHAPE_COLORS.map((c) => {
+                const isActive = currentObj?.color === c;
+                return (
+                  <button
+                    key={c}
+                    onClick={() => {
+                      onObjectUpdate(showColorPicker.objId, { color: c });
+                    }}
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: c,
+                      border: isActive ? '2px solid #4285f4' : '2px solid rgba(255,255,255,0.2)',
+                      cursor: 'pointer',
+                      padding: 0,
+                      outline: 'none',
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Thickness row — only for lines and arrows */}
+            {isLineType && (
+              <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                <span style={{ color: '#777', fontSize: '0.65rem', marginRight: '2px', whiteSpace: 'nowrap' }}>
+                  Thickness
+                </span>
+                {STROKE_WIDTHS.map((sw) => {
+                  const isActive = (currentObj?.strokeWidth || 3) === sw;
+                  return (
+                    <button
+                      key={sw}
+                      onClick={() => {
+                        onObjectUpdate(showColorPicker.objId, { strokeWidth: sw });
+                      }}
+                      title={`${sw}px`}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: '4px',
+                        background: isActive ? 'rgba(66,133,244,0.3)' : 'transparent',
+                        border: isActive ? '1px solid #4285f4' : '1px solid rgba(255,255,255,0.1)',
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 16,
+                          height: Math.max(2, sw),
+                          background: currentObj?.color || '#fff',
+                          borderRadius: sw > 4 ? '2px' : '1px',
+                        }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Zoom indicator */}
       <div style={{

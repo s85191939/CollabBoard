@@ -22,6 +22,7 @@ export interface BoardObject {
   fromId?: string;
   toId?: string;
   points?: number[];
+  strokeWidth?: number;
 }
 
 export function useBoardObjects(boardId: string | undefined) {

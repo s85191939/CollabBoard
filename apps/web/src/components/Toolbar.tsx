@@ -7,13 +7,13 @@ interface Props {
 
 const tools: { id: Tool; label: string; icon: string; shortcut: string }[] = [
   { id: 'select', label: 'Select', icon: '↖', shortcut: 'V' },
-  { id: 'pan', label: 'Pan', icon: '✋', shortcut: 'H' },
+  { id: 'pan', label: 'Drag', icon: '✋', shortcut: 'H' },
   { id: 'sticky-note', label: 'Sticky Note', icon: '📝', shortcut: 'N' },
-  { id: 'rectangle', label: 'Rectangle', icon: '⬜', shortcut: 'R' },
+  { id: 'rectangle', label: 'Square', icon: '⬜', shortcut: 'R' },
   { id: 'circle', label: 'Circle', icon: '⭕', shortcut: 'C' },
   { id: 'line', label: 'Line', icon: '╱', shortcut: 'L' },
-  { id: 'arrow', label: 'Arrow', icon: '→', shortcut: 'A' },
-  { id: 'text', label: 'Text', icon: 'T', shortcut: 'T' },
+  { id: 'arrow', label: 'Connector', icon: '→', shortcut: 'A' },
+  { id: 'text', label: 'Text Box', icon: 'T', shortcut: 'T' },
 ];
 
 export function Toolbar({ activeTool, onToolChange }: Props) {

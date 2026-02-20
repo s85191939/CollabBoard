@@ -13,7 +13,7 @@ describe('Toolbar', () => {
   it('highlights the active tool', () => {
     render(<Toolbar activeTool="rectangle" onToolChange={() => {}} />);
 
-    const rectangleBtn = screen.getByTitle('Rectangle (R)');
+    const rectangleBtn = screen.getByTitle('Square (R)');
     expect(rectangleBtn).toHaveStyle({ background: '#4285f4' });
   });
 
@@ -21,20 +21,20 @@ describe('Toolbar', () => {
     render(<Toolbar activeTool="select" onToolChange={() => {}} />);
 
     expect(screen.getByTitle('Select (V)')).toBeInTheDocument();
-    expect(screen.getByTitle('Pan (H)')).toBeInTheDocument();
+    expect(screen.getByTitle('Drag (H)')).toBeInTheDocument();
     expect(screen.getByTitle('Sticky Note (N)')).toBeInTheDocument();
-    expect(screen.getByTitle('Rectangle (R)')).toBeInTheDocument();
+    expect(screen.getByTitle('Square (R)')).toBeInTheDocument();
     expect(screen.getByTitle('Circle (C)')).toBeInTheDocument();
     expect(screen.getByTitle('Line (L)')).toBeInTheDocument();
-    expect(screen.getByTitle('Arrow (A)')).toBeInTheDocument();
-    expect(screen.getByTitle('Text (T)')).toBeInTheDocument();
+    expect(screen.getByTitle('Connector (A)')).toBeInTheDocument();
+    expect(screen.getByTitle('Text Box (T)')).toBeInTheDocument();
   });
 
   it('calls onToolChange with correct tool id when clicked', () => {
     const onToolChange = vi.fn();
     render(<Toolbar activeTool="select" onToolChange={onToolChange} />);
 
-    fireEvent.click(screen.getByTitle('Rectangle (R)'));
+    fireEvent.click(screen.getByTitle('Square (R)'));
     expect(onToolChange).toHaveBeenCalledWith('rectangle');
 
     fireEvent.click(screen.getByTitle('Circle (C)'));
@@ -43,7 +43,7 @@ describe('Toolbar', () => {
     fireEvent.click(screen.getByTitle('Line (L)'));
     expect(onToolChange).toHaveBeenCalledWith('line');
 
-    fireEvent.click(screen.getByTitle('Arrow (A)'));
+    fireEvent.click(screen.getByTitle('Connector (A)'));
     expect(onToolChange).toHaveBeenCalledWith('arrow');
   });
 
@@ -51,7 +51,7 @@ describe('Toolbar', () => {
     const onToolChange = vi.fn();
     render(<Toolbar activeTool="select" onToolChange={onToolChange} />);
 
-    fireEvent.click(screen.getByTitle('Pan (H)'));
+    fireEvent.click(screen.getByTitle('Drag (H)'));
     expect(onToolChange).toHaveBeenCalledWith('pan');
   });
 
@@ -59,7 +59,7 @@ describe('Toolbar', () => {
     const onToolChange = vi.fn();
     render(<Toolbar activeTool="select" onToolChange={onToolChange} />);
 
-    fireEvent.click(screen.getByTitle('Text (T)'));
+    fireEvent.click(screen.getByTitle('Text Box (T)'));
     expect(onToolChange).toHaveBeenCalledWith('text');
   });
 
