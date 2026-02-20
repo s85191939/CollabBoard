@@ -71,6 +71,7 @@ export function WhiteboardCanvas({
   const selectionRectRef = useRef<Konva.Rect>(null);
   const [stageSize, setStageSize] = useState({ width: window.innerWidth, height: window.innerHeight - 44 });
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const activeTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [showColorPicker, setShowColorPicker] = useState<{ x: number; y: number; objId: string } | null>(null);
   const isSelecting = useRef(false);
   const selectionStart = useRef({ x: 0, y: 0 });
@@ -155,6 +156,10 @@ export function WhiteboardCanvas({
 
   const handleWheel = useCallback((e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
+    // Close text editor on scroll/zoom so it doesn't drift from the object
+    if (activeTextareaRef.current) {
+      activeTextareaRef.current.blur();
+    }
     const stage = stageRef.current;
     if (!stage) return;
 
@@ -192,6 +197,10 @@ export function WhiteboardCanvas({
     if (!stage) return;
 
     if (e.evt.button === 1 || activeTool === 'pan' || spacePressed.current || (e.evt.button === 0 && e.evt.shiftKey && activeTool === 'select')) {
+      // Close text editor on pan so it doesn't drift from the object
+      if (activeTextareaRef.current) {
+        activeTextareaRef.current.blur();
+      }
       isPanning.current = true;
       lastPointerPos.current = stage.getPointerPosition() || { x: 0, y: 0 };
       return;
@@ -291,9 +300,12 @@ export function WhiteboardCanvas({
         if (node) {
           const clientRect = node.getClientRect();
           const stageBox = stage.container().getBoundingClientRect();
-          // Position toolbar above-right of the object, well clear of it
-          const toolbarHeight = (obj.type === 'line' || obj.type === 'arrow') ? 80 : 44;
-          const topY = stageBox.top + clientRect.y - toolbarHeight - 12;
+          const isLine = obj.type === 'line' || obj.type === 'arrow';
+          // Toolbar height: ~80 for lines (2 rows), ~44 for shapes (1 row)
+          // Extra gap for rotation handle (30px) + breathing room
+          const toolbarHeight = isLine ? 80 : 44;
+          const extraGap = isLine ? 50 : 20;
+          const topY = stageBox.top + clientRect.y - toolbarHeight - extraGap;
           const leftX = stageBox.left + clientRect.x + clientRect.width / 2;
           setShowColorPicker({
             x: Math.max(8, Math.min(leftX, window.innerWidth - 320)),
@@ -317,8 +329,10 @@ export function WhiteboardCanvas({
     if (!node) return;
     const clientRect = node.getClientRect();
     const stageBox = stage.container().getBoundingClientRect();
-    const toolbarHeight = (obj.type === 'line' || obj.type === 'arrow') ? 80 : 44;
-    const topY = stageBox.top + clientRect.y - toolbarHeight - 12;
+    const isLine = obj.type === 'line' || obj.type === 'arrow';
+    const toolbarHeight = isLine ? 80 : 44;
+    const extraGap = isLine ? 50 : 20;
+    const topY = stageBox.top + clientRect.y - toolbarHeight - extraGap;
     const leftX = stageBox.left + clientRect.x + clientRect.width / 2;
     setShowColorPicker({
       x: Math.max(8, Math.min(leftX, window.innerWidth - 320)),
@@ -425,11 +439,13 @@ export function WhiteboardCanvas({
       textarea.style.caretColor = obj.color || '#fff';
     }
 
+    activeTextareaRef.current = textarea;
     textarea.focus();
 
     const handleBlur = () => {
       onObjectUpdate(objId, { text: textarea.value });
       if (textarea.parentNode) document.body.removeChild(textarea);
+      activeTextareaRef.current = null;
       setEditingTextId(null);
     };
 
@@ -454,10 +470,6 @@ export function WhiteboardCanvas({
       draggable,
       onClick: (e: Konva.KonvaEventObject<MouseEvent>) => {
         handleObjectClick(e, obj.id);
-        // Single-click on sticky notes / text opens editor
-        if (activeTool === 'select' && isTextable && !isEditing) {
-          openTextEditor(obj.id, obj);
-        }
       },
       onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(e, obj.id),
       onTransformEnd: (e: Konva.KonvaEventObject<Event>) => handleTransformEnd(e, obj.id),
