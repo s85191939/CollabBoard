@@ -230,7 +230,7 @@ async def ai_command(request: AICommandRequest, user: dict = Depends(verify_toke
 
         # Call Claude with tools
         response = claude.messages.create(
-            model="claude-3-5-haiku-20241022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             tools=BOARD_TOOLS,
@@ -272,7 +272,7 @@ async def ai_command(request: AICommandRequest, user: dict = Depends(verify_toke
 
             # Continue the conversation
             current_response = claude.messages.create(
-                model="claude-3-5-haiku-20241022",
+                model="claude-haiku-4-5-20251001",
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
                 tools=BOARD_TOOLS,
