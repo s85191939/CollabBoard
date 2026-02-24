@@ -81,6 +81,19 @@ export function useBoardObjects(boardId: string | undefined) {
     });
   }, [boardId]);
 
+  const updateObjects = useCallback(async (updates: { id: string; changes: Partial<BoardObject> }[]) => {
+    if (!boardId || updates.length === 0) return;
+    const batch = writeBatch(db);
+    const now = Date.now();
+    updates.forEach(({ id, changes }) => {
+      batch.update(doc(db, 'boards', boardId, 'objects', id), {
+        ...changes,
+        updatedAt: now,
+      });
+    });
+    await batch.commit();
+  }, [boardId]);
+
   const deleteObject = useCallback(async (id: string) => {
     if (!boardId) return;
     await deleteDoc(doc(db, 'boards', boardId, 'objects', id));
@@ -133,6 +146,7 @@ export function useBoardObjects(boardId: string | undefined) {
     addObject,
     addObjects,
     updateObject,
+    updateObjects,
     deleteObject,
     deleteObjects,
   };

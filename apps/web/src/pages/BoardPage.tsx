@@ -16,7 +16,7 @@ export function BoardPage() {
   const { boardId } = useParams<{ boardId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { objects, addObject, addObjects, updateObject, deleteObject, deleteObjects } = useBoardObjects(boardId);
+  const { objects, addObject, addObjects, updateObject, updateObjects, deleteObjects } = useBoardObjects(boardId);
   const { cursors, updateCursor, removeCursor } = useCursors(boardId, user?.uid);
   const { users, userColor } = usePresence(boardId, user);
   const [activeTool, setActiveTool] = useState<Tool>('select');
@@ -24,6 +24,23 @@ export function BoardPage() {
   const [showAI, setShowAI] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const clipboard = useRef<BoardObject[]>([]);
+
+  // Debounced batch update buffer — collects rapid object updates and flushes as one batch
+  const pendingUpdates = useRef<Map<string, Partial<BoardObject>>>(new Map());
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPendingUpdates = useCallback(() => {
+    if (pendingUpdates.current.size === 0) return;
+    const batch = Array.from(pendingUpdates.current.entries()).map(([id, changes]) => ({ id, changes }));
+    pendingUpdates.current.clear();
+    updateObjects(batch);
+  }, [updateObjects]);
+
+  const debouncedUpdate = useCallback((id: string, updates: Partial<BoardObject>) => {
+    pendingUpdates.current.set(id, { ...(pendingUpdates.current.get(id) || {}), ...updates });
+    if (flushTimer.current) clearTimeout(flushTimer.current);
+    flushTimer.current = setTimeout(flushPendingUpdates, 50);
+  }, [flushPendingUpdates]);
 
   useEffect(() => {
     return () => {
@@ -56,8 +73,16 @@ export function BoardPage() {
   }, [activeTool, addObject, user]);
 
   const handleObjectUpdate = useCallback((id: string, updates: Partial<BoardObject>) => {
-    updateObject(id, updates);
-  }, [updateObject]);
+    // Use debounced batch for position/size changes (high-frequency during drag)
+    // Use immediate update for content changes (text, color) for instant feedback
+    const isPositionUpdate = ('x' in updates || 'y' in updates || 'width' in updates || 'height' in updates || 'rotation' in updates)
+      && !('text' in updates) && !('color' in updates) && !('strokeWidth' in updates);
+    if (isPositionUpdate) {
+      debouncedUpdate(id, updates);
+    } else {
+      updateObject(id, updates);
+    }
+  }, [updateObject, debouncedUpdate]);
 
   const handleDelete = useCallback(() => {
     if (selectedIds.length > 0) {
@@ -147,82 +172,80 @@ export function BoardPage() {
 
   const executeAIActions = useCallback(async (actions: { action: string; params: any }[]) => {
     if (!user) return;
+
+    // Separate actions into batched categories for performance
+    const creates: (Partial<BoardObject> & { type: BoardObject['type'] })[] = [];
+    const updates: { id: string; changes: Partial<BoardObject> }[] = [];
+    const deletes: string[] = [];
+
     for (const { action, params } of actions) {
       switch (action) {
         case 'createStickyNote':
-          await addObject({
+          creates.push({
             type: 'sticky-note',
-            x: params.x ?? 0,
-            y: params.y ?? 0,
-            width: params.width ?? 200,
-            height: params.height ?? 200,
-            color: params.color ?? '#FFEB3B',
-            text: params.text ?? '',
-          }, user.uid);
+            x: params.x ?? 0, y: params.y ?? 0,
+            width: params.width ?? 200, height: params.height ?? 200,
+            color: params.color ?? '#FFEB3B', text: params.text ?? '',
+          });
           break;
         case 'createShape':
-          await addObject({
+          creates.push({
             type: params.type === 'circle' ? 'circle' : 'rectangle',
-            x: params.x ?? 0,
-            y: params.y ?? 0,
-            width: params.width ?? 200,
-            height: params.height ?? 150,
+            x: params.x ?? 0, y: params.y ?? 0,
+            width: params.width ?? 200, height: params.height ?? 150,
             color: params.color ?? '#2196F3',
-          }, user.uid);
+          });
           break;
         case 'createFrame':
-          await addObject({
+          creates.push({
             type: 'frame',
-            x: params.x ?? 0,
-            y: params.y ?? 0,
-            width: params.width ?? 400,
-            height: params.height ?? 300,
-            color: params.color ?? '#37474F',
-            text: params.title ?? 'Frame',
-          }, user.uid);
+            x: params.x ?? 0, y: params.y ?? 0,
+            width: params.width ?? 400, height: params.height ?? 300,
+            color: params.color ?? '#37474F', text: params.title ?? 'Frame',
+          });
           break;
         case 'createText':
-          await addObject({
+          creates.push({
             type: 'text',
-            x: params.x ?? 0,
-            y: params.y ?? 0,
-            width: 300,
-            height: 50,
-            color: params.color ?? '#ffffff',
-            text: params.text ?? '',
+            x: params.x ?? 0, y: params.y ?? 0,
+            width: 300, height: 50,
+            color: params.color ?? '#ffffff', text: params.text ?? '',
             fontSize: params.fontSize ?? 20,
-          }, user.uid);
+          });
           break;
         case 'createConnector':
-          await addObject({
+          creates.push({
             type: 'connector',
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
+            x: 0, y: 0, width: 0, height: 0,
             color: params.color ?? '#ffffff',
-            fromId: params.fromId,
-            toId: params.toId,
-          }, user.uid);
+            fromId: params.fromId, toId: params.toId,
+          });
           break;
         case 'moveObject':
-          await updateObject(params.objectId, { x: params.x, y: params.y });
+          updates.push({ id: params.objectId, changes: { x: params.x, y: params.y } });
           break;
         case 'resizeObject':
-          await updateObject(params.objectId, { width: params.width, height: params.height });
+          updates.push({ id: params.objectId, changes: { width: params.width, height: params.height } });
           break;
         case 'updateText':
-          await updateObject(params.objectId, { text: params.newText });
+          updates.push({ id: params.objectId, changes: { text: params.newText } });
           break;
         case 'changeColor':
-          await updateObject(params.objectId, { color: params.color });
+          updates.push({ id: params.objectId, changes: { color: params.color } });
           break;
         case 'deleteObject':
-          await deleteObject(params.objectId);
+          deletes.push(params.objectId);
           break;
       }
     }
-  }, [user, addObject, updateObject, deleteObject]);
+
+    // Execute all batches in parallel — single Firestore write per category
+    const promises: Promise<any>[] = [];
+    if (creates.length > 0) promises.push(addObjects(creates, user.uid));
+    if (updates.length > 0) promises.push(updateObjects(updates));
+    if (deletes.length > 0) promises.push(deleteObjects(deletes));
+    await Promise.all(promises);
+  }, [user, addObjects, updateObjects, deleteObjects]);
 
   const handleAICommand = useCallback(async (prompt: string) => {
     if (!user || !boardId) return;
